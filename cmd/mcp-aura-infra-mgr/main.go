@@ -23,10 +23,11 @@ func main() {
 
 	// Load and validate configuration (env vars + CLI overrides)
 	cfg, err := config.LoadConfig(&config.CLIOverrides{
-		URI:       cliArgs.URI,
-		ReadOnly:  cliArgs.ReadOnly,
-		LogLevel:  cliArgs.LogLevel,
-		LogFormat: cliArgs.LogFormat,
+		URI:         cliArgs.URI,
+		ReadOnly:    cliArgs.ReadOnly,
+		LogLevel:    cliArgs.LogLevel,
+		LogFormat:   cliArgs.LogFormat,
+		InstCfgFile: cliArgs.InstCfgFile,
 	})
 	if err != nil {
 		// Can't use logger here yet, so just print to stderr

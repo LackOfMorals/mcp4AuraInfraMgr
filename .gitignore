@@ -41,3 +41,6 @@ dist/
 CLAUDE.md
 gemini.md
 .DS_Store
+
+# Instance configurations (may contain sensitive tenant IDs)
+instance_configs.json

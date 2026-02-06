@@ -10,7 +10,7 @@ import (
 // osExit is a variable that can be mocked in tests
 var osExit = os.Exit
 
-const helpText = `mcp-aura-api - A Model Context Protocol Server for Neo4j Aura API
+const helpText = `mcp-aura-infra-mgr - A Model Context Protocol Server for managing Neo4j Aura Infrastructure
 
 Usage:
   mcp-aura-api  [OPTIONS]
@@ -25,10 +25,11 @@ Required Environment Variables:
   CLIENT_SECRET   Client Secret
   
 Optional Environment Variables:
-  URI             URI to Aura API 
-  READ_ONLY       Enable read-only mode (default: true)
-  LOG_LEVEL       Log level to use (default: Info )
-  LOG_FORMAT      Log format to use (defaut: Text )
+  URI                    URI to Aura API 
+  READ_ONLY              Enable read-only mode (default: true)
+  LOG_LEVEL              Log level to use (default: Info )
+  LOG_FORMAT             Log format to use (defaut: Text )
+  INSTANCE_CONFIG_FILE   Full path to instance configuration file
 
 Examples:
   # Using environment variables
@@ -47,6 +48,7 @@ type Args struct {
 	ReadOnly     string
 	LogLevel     string
 	LogFormat    string
+	InstCfgFile  string
 }
 
 // ParseConfigFlags parses CLI flags and returns configuration values.
@@ -58,6 +60,7 @@ func ParseConfigFlags() *Args {
 	ClientSecret := flag.String("client-secret", "", "Client Secret for Aura API ")
 	LogLevel := flag.String("log-level", "", "Log level to use ( overrides LOG_LEVEL )")
 	LogFormat := flag.String("log-format", "", "Log level to use ( overrides LOG_FORMAT )")
+	InstCfgFile := flag.String("instance-config-file", "", "Full path to instance configuration file ( overrides INSTANCE_CONFIG_FILE )")
 
 	flag.Parse()
 
@@ -68,6 +71,7 @@ func ParseConfigFlags() *Args {
 		ClientSecret: *ClientSecret,
 		LogLevel:     *LogLevel,
 		LogFormat:    *LogFormat,
+		InstCfgFile:  *InstCfgFile,
 	}
 }
 

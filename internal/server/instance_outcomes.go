@@ -71,6 +71,182 @@ func executeListInstances(ctx context.Context, parameters map[string]interface{}
 	return mcp.NewToolResultText(string(jsonData)), nil
 }
 
+// registerListInstanceConfigsOutcome registers the list-instance-configs outcome
+func (r *OutcomeRegistry) registerListInstanceConfigsOutcome() {
+	r.Outcomes["list-instance-configs"] = &Outcome{
+		ID:          "list-instance-configs",
+		Name:        "List Instance Configurations",
+		Description: "List all available pre-configured instance templates. Each configuration has a friendly label that can be used when creating instances, avoiding the need to specify all parameters manually.",
+		Type:        OutcomesTypeList,
+		ReadOnly:    true,
+		Parameters:  []OutcomeParameter{}, // No parameters needed
+		Metadata: map[string]interface{}{
+			"category": "configurations",
+		},
+		Handler: executeListInstanceConfigs,
+	}
+}
+
+// executeListInstanceConfigs implements the list-instance-configs outcome
+func executeListInstanceConfigs(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	// Load configurations from file
+	configFile, err := LoadInstanceConfigurations(deps.Config.InstanceCfgFile)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to load instance configurations: %v, use create-instance outcome to create new instances", err)), nil
+	}
+
+	// Create summary list
+	type configSummary struct {
+		Label         string `json:"label"`
+		Description   string `json:"description,omitempty"`
+		Name          string `json:"name"`
+		CloudProvider string `json:"cloud_provider"`
+		Region        string `json:"region"`
+		Memory        string `json:"memory"`
+		Type          string `json:"type"`
+		TenantId      string `json:"tenant_id"`
+		Version       string `json:"version,omitempty"`
+	}
+
+	summaries := make([]configSummary, 0, len(configFile.Configurations))
+	for _, config := range configFile.Configurations {
+		// Validate each configuration
+		if err := config.ValidateConfig(); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid configuration found: %v", err)), nil
+		}
+
+		summaries = append(summaries, configSummary{
+			Label:         config.Label,
+			Description:   config.Description,
+			Name:          config.Name,
+			CloudProvider: config.CloudProvider,
+			Region:        config.Region,
+			Memory:        config.Memory,
+			Type:          config.Type,
+			TenantId:      config.TenantId,
+			Version:       config.Version,
+		})
+	}
+
+	jsonData, err := json.MarshalIndent(summaries, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize configurations: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerCreateInstanceFromConfigOutcome registers the create-instance-from-config outcome
+func (r *OutcomeRegistry) registerCreateInstanceFromConfigOutcome() {
+	r.Outcomes["create-instance-from-config"] = &Outcome{
+		ID:          "create-instance-from-config",
+		Name:        "Create Instance from Configuration",
+		Description: "Create a new Neo4j Aura database instance using a pre-configured template. Simply specify the configuration label to create an instance with all the predefined settings. Use 'list-instance-configs' to see available configurations.",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "config_label",
+				Type:        "string",
+				Description: "The label of the pre-configured instance template to use. Use 'list-instance-configs' outcome to see available labels.",
+				Required:    true,
+			},
+			{
+				Name:        "override_name",
+				Type:        "string",
+				Description: "Optional: Override the default name from the configuration with a custom name",
+				Required:    false,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category": "instances",
+		},
+		Handler: executeCreateInstanceFromConfig,
+	}
+}
+
+// executeCreateInstanceFromConfig implements the create-instance-from-config outcome
+func executeCreateInstanceFromConfig(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	// Validate and extract required parameter
+	configLabel, ok := parameters["config_label"].(string)
+	if !ok || configLabel == "" {
+		return mcp.NewToolResultError("'config_label' parameter is required and must be a non-empty string"), nil
+	}
+
+	// Load configurations from file
+	configFile, err := LoadInstanceConfigurations(deps.Config.InstanceCfgFile)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to load instance configurations: %v, use create-instance outcome to create new instances.", err)), nil
+	}
+
+	// Get the specific configuration
+	config, err := configFile.GetConfigByLabel(configLabel)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Configuration not found: %v. Use 'list-instance-configs' to see available configurations.", err)), nil
+	}
+
+	// Validate the configuration
+	if err := config.ValidateConfig(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid configuration: %v", err)), nil
+	}
+
+	// Check for name override
+	instanceName := config.Name
+	if overrideName, ok := parameters["override_name"].(string); ok && overrideName != "" {
+		instanceName = overrideName
+	}
+
+	// Create the instance definition
+	instanceDefinition := config.ToCreateInstanceConfig()
+	instanceDefinition.Name = instanceName
+
+	// Call the Aura API to create the instance
+	instance, err := deps.AClient.Instances.Create(instanceDefinition)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create instance: %v", err)), nil
+	}
+
+	// Format the response
+	type createResult struct {
+		Success       bool   `json:"success"`
+		Message       string `json:"message"`
+		ConfigUsed    string `json:"config_used"`
+		Id            string `json:"id"`
+		Name          string `json:"name"`
+		Status        string `json:"status"`
+		CloudProvider string `json:"cloud_provider"`
+		Memory        string `json:"memory"`
+		Type          string `json:"type"`
+		URL           string `json:"url,omitempty"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+	}
+
+	result := createResult{
+		Success:       true,
+		Message:       fmt.Sprintf("Instance created successfully from configuration '%s'", configLabel),
+		ConfigUsed:    configLabel,
+		Id:            instance.Data.Id,
+		Name:          instance.Data.Name,
+		CloudProvider: instance.Data.CloudProvider,
+		Type:          instance.Data.Type,
+		URL:           instance.Data.ConnectionUrl,
+		Username:      instance.Data.Username,
+		Password:      instance.Data.Password,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
 // registerGetInstanceDetailsOutcome registers the get-instance-details outcome
 func (r *OutcomeRegistry) registerGetInstanceDetailsOutcome() {
 	r.Outcomes["get-instance-details"] = &Outcome{

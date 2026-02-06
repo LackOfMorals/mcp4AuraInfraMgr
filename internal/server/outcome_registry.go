@@ -26,6 +26,10 @@ func NewOutcomeRegistry() *OutcomeRegistry {
 	registry.registerGetInstanceDetailsOutcome()
 	registry.registerCreateInstanceOutcome()
 	registry.registerDeleteInstanceOutcome()
+	
+	// Register configuration-based outcomes
+	registry.registerListInstanceConfigsOutcome()
+	registry.registerCreateInstanceFromConfigOutcome()
 
 	return registry
 }
