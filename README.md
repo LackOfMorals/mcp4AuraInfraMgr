@@ -35,6 +35,13 @@ By default, the server looks for `instance_configs.json` in the current director
 export INSTANCE_CONFIG_FILE=/path/to/your/configs.json
 ```
 
+Or specify on the command line as a paramter:
+
+```bash
+mcp-aura-infra-mgr --INSTANCE_CONFIG_FILE=/path/to/your/configs.json
+```
+
+
 **Note:** The `instance_configs.json` file is in `.gitignore` to prevent accidentally committing sensitive tenant IDs. Always use the `.example` file as a template.
 
 ### Configuration File Format
@@ -102,21 +109,20 @@ The configuration file is a JSON file with the following structure:
 ### Clone the repository 
 
 ```bash
-git clone 
+git clone https://github.com/LackOfMorals/mcp4AuraInfraMgr.git
 ```
 
 ### Install Dependencies
 
 ```bash
-cd  
+cd mcp4AuraInfraMgr 
 go mod download
-
 ```
 
 
 ### Build
 
-MCP for Aura API needs to be compiled before use.   Do this with
+MCP for Aura Infrastructure needs to be compiled before use.   Do this with
 
 ```Bash
 go build -o ./bin/mcp-aura-infra-mgr ./cmd/mcp-aura-infra-mgr
@@ -125,7 +131,7 @@ go build -o ./bin/mcp-aura-infra-mgr ./cmd/mcp-aura-infra-mgr
 
 ### Testing
 
-You can test before using with LLMs by using MCP Inspector. Set required environmental variables in MCP Inspector itself or beforehand.  If the latter, then you need to set CLIENT_ID and CLIENT_SECRET before running MCP Inspector. 
+You can test before using with LLMs by using MCP Inspector. Set required environmental variables in MCP Inspector itself or beforehand.  If the latter, then you need to set CLIENT_ID and CLIENT_SECRET before running MCP Inspector. This assumes that you have your instance configuration file in the same folder as the mcp binary.
 
 ```bash
 npx @modelcontextprotocol/inspector go run ./cmd/mcp-aura-infra-mgr

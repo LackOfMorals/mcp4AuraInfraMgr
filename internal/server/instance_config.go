@@ -18,7 +18,6 @@ type InstanceConfig struct {
 	Memory        string `json:"memory"`
 	Type          string `json:"type"`
 	TenantId      string `json:"tenant_id"`
-	Version       string `json:"version,omitempty"`
 }
 
 // InstanceConfigFile represents the JSON file containing multiple instance configurations
@@ -110,10 +109,7 @@ func (ic *InstanceConfig) ValidateConfig() error {
 
 // ToCreateInstanceConfig converts an InstanceConfig to the Aura API CreateInstanceConfigData
 func (ic *InstanceConfig) ToCreateInstanceConfig() *aura.CreateInstanceConfigData {
-	version := ic.Version
-	if version == "" {
-		version = "5" // default
-	}
+	version := "5" // default
 
 	return &aura.CreateInstanceConfigData{
 		Name:          ic.Name,
