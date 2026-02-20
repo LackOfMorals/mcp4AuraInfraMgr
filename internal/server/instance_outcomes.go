@@ -578,7 +578,7 @@ func executeCreateInstance(ctx context.Context, parameters map[string]interface{
 
 // registerSnapshotInstanceOutcome registers the snapshot-instance outcome
 func (r *OutcomeRegistry) registerSnapshotInstanceOutcome() {
-	r.Outcomes["take-snapshot-instance"] = &Outcome{
+	r.Outcomes["snapshot-instance"] = &Outcome{
 		ID:          "snapshot-instance",
 		Name:        "Snapshot Instance",
 		Description: "",
@@ -595,7 +595,6 @@ func (r *OutcomeRegistry) registerSnapshotInstanceOutcome() {
 		Metadata: map[string]interface{}{
 			"category":    "instances",
 			"destructive": false,
-			"warning":     "T",
 		},
 		Handler: executeSnapshotInstance,
 	}
@@ -645,6 +644,79 @@ func executeSnapshotInstance(ctx context.Context, parameters map[string]interfac
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerListSnapshotInstanceOutcome registers the snapshot-instance outcome
+func (r *OutcomeRegistry) registerListSnapshotInstanceOutcome() {
+	r.Outcomes["list-snapshot-instance"] = &Outcome{
+		ID:          "list-snapshot-instance",
+		Name:        "List Snapshots",
+		Description: "",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "instance_id",
+				Type:        "string",
+				Description: "The ID of the instance to snapshot",
+				Required:    true,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category":    "instances",
+			"destructive": false,
+		},
+		Handler: executeListSnapshotInstance,
+	}
+}
+
+// executeListSnapshotInstance implements the list-snapshot-instance outcome
+func executeListSnapshotInstance(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	type snapshotSummary aura.GetSnapshotData
+
+	type snapshotList []snapshotSummary
+
+	// Validate and extract required parameters
+	instanceID, ok := parameters["instance_id"].(string)
+	if !ok || instanceID == "" {
+		return mcp.NewToolResultError("'instance_id' parameter is required and must be a non-empty string"), nil
+	}
+
+	//  List the snapshot of the instance using the Aura API client
+	listSnapshotResponse, err := deps.AClient.Snapshots.List(ctx, instanceID, "")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get snapshot of instance: %v", err)), nil
+	}
+
+	// Create an empty list to hold our snapshots
+	records := snapshotList{}
+
+	// Fill the list with our snapshot information
+	for _, snap := range listSnapshotResponse.Data {
+		records = append(records, snapshotSummary{
+			InstanceId: snap.InstanceId,
+			SnapshotId: snap.SnapshotId,
+			Profile:    snap.Profile,
+			Status:     snap.Status,
+			Timestamp:  snap.Timestamp,
+			Exportable: snap.Exportable,
+		})
+	}
+
+	if len(records) == 0 {
+		return mcp.NewToolResultText("No snapshots found or user does not have access to any for instance " + instanceID), nil
+	}
+
+	jsonData, err := json.Marshal(records)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
 	}
