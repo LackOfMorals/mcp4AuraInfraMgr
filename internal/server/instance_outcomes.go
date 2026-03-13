@@ -628,9 +628,9 @@ func executeSnapshotInstance(ctx context.Context, parameters map[string]interfac
 	type createSnapshotResult struct {
 		Success    bool   `json:"success"`
 		Message    string `json:"message"`
-		Id         string `json:"deleted_id"`
-		TimeDate   string `json:"deleted_name"`
-		Status     string `json:"warning"`
+		Id         string `json:"snapshot_id"`
+		TimeDate   string `json:"timestamp"`
+		Status     string `json:"status"`
 		Exportable bool   `json:"exportable"`
 	}
 
@@ -793,7 +793,7 @@ func executePauseInstance(ctx context.Context, parameters map[string]interface{}
 
 // registerResumeInstanceOutcome registers the pause-instance outcome
 func (r *OutcomeRegistry) registerResumeInstanceOutcome() {
-	r.Outcomes["pause-instance"] = &Outcome{
+	r.Outcomes["resume-instance"] = &Outcome{
 		ID:          "resume-instance",
 		Name:        "Resume Instance",
 		Description: "",

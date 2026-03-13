@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"time"
 
-	
 	"github.com/LackOfMorals/aura-client"
 	"github.com/LackOfMorals/mcp4AuraAPI/internal/config"
 
@@ -25,6 +24,7 @@ type Dependencies struct {
 	AClient  *aura.AuraAPIClient
 	Config   *config.Config
 	OutComes *OutcomeRegistry
+	Server   *server.MCPServer // needed to send progress notifications
 }
 
 // NewNeo4jMCPServer creates a new MCP server instance
@@ -68,6 +68,7 @@ func (s *Neo4jMCPServer) Start() error {
 		AClient:  s.aClient,
 		OutComes: s.aOutcomes,
 		Config:   s.config,
+		Server:   s.MCPServer,
 	}
 
 	// Register tools

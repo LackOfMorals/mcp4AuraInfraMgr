@@ -1,4 +1,4 @@
-// This
+// outcome_registry.go
 
 package server
 
@@ -34,6 +34,13 @@ func NewOutcomeRegistry() *OutcomeRegistry {
 	// Register configuration-based outcomes
 	registry.registerListInstanceConfigsOutcome()
 	registry.registerCreateInstanceFromConfigOutcome()
+
+	// Register lifecycle workflow outcomes
+	registry.registerProvisionEnvironmentOutcome()
+
+	// Register deployment gating outcomes
+	registry.registerPreDeploymentSnapshotOutcome()
+	registry.registerRollbackInstanceOutcome()
 
 	return registry
 }

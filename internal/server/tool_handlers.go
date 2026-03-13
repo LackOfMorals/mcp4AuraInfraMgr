@@ -63,7 +63,11 @@ func GetOutcomeDetailsHandler(deps *Dependencies) func(context.Context, mcp.Call
 	}
 }
 
-// ExecuteOutcomeHandler returns a handler function for executing an Outcome
+// ExecuteOutcomeHandler returns a handler function for executing an Outcome.
+// For outcomes that support progress notifications (provision-environment),
+// a progressSender is built from the request's progressToken and passed directly
+// to the implementation — bypassing the registry's generic dispatch so the raw
+// request is accessible here where the token can be extracted.
 func ExecuteOutcomeHandler(deps *Dependencies) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Type assert Arguments to map[string]interface{}
@@ -90,7 +94,23 @@ func ExecuteOutcomeHandler(deps *Dependencies) func(context.Context, mcp.CallToo
 			parameters = make(map[string]interface{})
 		}
 
-		// Execute the Outcome
+		// Long-running workflow outcomes send progress notifications.
+		// Wire up a progressSender from the request's progressToken (inert if the
+		// client did not supply one) and call the WithProgress implementation
+		// directly — the raw request is only accessible at this level.
+		switch OutcomeID {
+		case "provision-environment":
+			ps := newProgressSender(ctx, deps.Server, request)
+			return executeProvisionEnvironmentWithProgress(ctx, parameters, deps, ps)
+		case "pre-deployment-snapshot":
+			ps := newProgressSender(ctx, deps.Server, request)
+			return executePreDeploymentSnapshotWithProgress(ctx, parameters, deps, ps)
+		case "rollback-instance":
+			ps := newProgressSender(ctx, deps.Server, request)
+			return executeRollbackInstanceWithProgress(ctx, parameters, deps, ps)
+		}
+
+		// All other outcomes go through the standard registry dispatch.
 		return deps.OutComes.ExecuteOutcome(ctx, OutcomeID, parameters, deps)
 	}
 }
