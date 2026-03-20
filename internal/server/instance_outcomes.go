@@ -54,7 +54,7 @@ func executeListInstances(ctx context.Context, parameters map[string]interface{}
 	for _, inst := range instances.Data {
 		records = append(records, instanceSummary{
 			Name:          inst.Name,
-			Id:            inst.Id,
+			ID:            inst.ID,
 			Created:       inst.Created,
 			CloudProvider: inst.CloudProvider,
 		})
@@ -230,7 +230,7 @@ func executeCreateInstanceFromConfig(ctx context.Context, parameters map[string]
 		Success:       true,
 		Message:       fmt.Sprintf("Instance created successfully from configuration '%s'", configLabel),
 		ConfigUsed:    configLabel,
-		Id:            instance.Data.Id,
+		Id:            instance.Data.ID,
 		Name:          instance.Data.Name,
 		CloudProvider: instance.Data.CloudProvider,
 		Type:          instance.Data.Type,
@@ -292,7 +292,7 @@ func executeGetInstanceDetails(ctx context.Context, parameters map[string]interf
 	type instanceDetails aura.InstanceData
 
 	details := instanceDetails{
-		Id:            instanceInfo.Data.Id,
+		ID:            instanceInfo.Data.ID,
 		Name:          instanceInfo.Data.Name,
 		Status:        instanceInfo.Data.Status,
 		ConnectionUrl: instanceInfo.Data.ConnectionUrl,
@@ -301,7 +301,7 @@ func executeGetInstanceDetails(ctx context.Context, parameters map[string]interf
 		Memory:        instanceInfo.Data.Memory,
 		Storage:       instanceInfo.Data.Storage,
 		Type:          instanceInfo.Data.Type,
-		TenantId:      instanceInfo.Data.TenantId,
+		TenantID:      instanceInfo.Data.TenantID,
 		MetricsURL:    instanceInfo.Data.MetricsURL,
 	}
 
@@ -532,7 +532,7 @@ func executeCreateInstance(ctx context.Context, parameters map[string]interface{
 		Memory:        memory,
 		Type:          instanceType,
 		Version:       version,
-		TenantId:      tenant,
+		TenantID:      tenant,
 	}
 
 	// Call the Aura API to create the instance
@@ -559,7 +559,7 @@ func executeCreateInstance(ctx context.Context, parameters map[string]interface{
 	result := createResult{
 		Success:       true,
 		Message:       "Instance created successfully",
-		Id:            instance.Data.Id,
+		Id:            instance.Data.ID,
 		Name:          instance.Data.Name,
 		CloudProvider: instance.Data.CloudProvider,
 		Type:          instance.Data.Type,
@@ -619,7 +619,7 @@ func executeSnapshotInstance(ctx context.Context, parameters map[string]interfac
 	}
 
 	// Get some further detail for snapshot
-	snapshotDetails, err := deps.AClient.Snapshots.Get(ctx, instanceID, snapshotResponse.Data.SnapshotId)
+	snapshotDetails, err := deps.AClient.Snapshots.Get(ctx, instanceID, snapshotResponse.Data.SnapshotID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get snapshot detail for instance: %v", err)), nil
 	}
@@ -636,8 +636,8 @@ func executeSnapshotInstance(ctx context.Context, parameters map[string]interfac
 
 	result := createSnapshotResult{
 		Success:    true,
-		Message:    fmt.Sprintf("Snapshot '%s' for instance %s has been initiated", snapshotResponse.Data.SnapshotId, instanceID),
-		Id:         snapshotResponse.Data.SnapshotId,
+		Message:    fmt.Sprintf("Snapshot '%s' for instance %s has been initiated", snapshotResponse.Data.SnapshotID, instanceID),
+		Id:         snapshotResponse.Data.SnapshotID,
 		TimeDate:   snapshotDetails.Data.Timestamp,
 		Status:     snapshotDetails.Data.Status,
 		Exportable: snapshotDetails.Data.Exportable,
@@ -703,8 +703,8 @@ func executeListSnapshotInstance(ctx context.Context, parameters map[string]inte
 	// Fill the list with our snapshot information
 	for _, snap := range listSnapshotResponse.Data {
 		records = append(records, snapshotSummary{
-			InstanceId: snap.InstanceId,
-			SnapshotId: snap.SnapshotId,
+			InstanceID: snap.InstanceID,
+			SnapshotID: snap.SnapshotID,
 			Profile:    snap.Profile,
 			Status:     snap.Status,
 			Timestamp:  snap.Timestamp,
@@ -778,7 +778,7 @@ func executePauseInstance(ctx context.Context, parameters map[string]interface{}
 	result := pauseInstanceResult{
 		Success:  true,
 		Message:  fmt.Sprintf("Pausing for instance %s has been initiated", instanceID),
-		Id:       pauseInstanceResponse.Data.Id,
+		Id:       pauseInstanceResponse.Data.ID,
 		TimeDate: time.Now().String(),
 		Status:   pauseInstanceResponse.Data.Status,
 	}
@@ -845,7 +845,7 @@ func executeResumeInstance(ctx context.Context, parameters map[string]interface{
 	result := resumeInstanceResult{
 		Success:  true,
 		Message:  fmt.Sprintf("Resuming for instance %s has been initiated", instanceID),
-		Id:       resumeInstanceResponse.Data.Id,
+		Id:       resumeInstanceResponse.Data.ID,
 		TimeDate: time.Now().String(),
 		Status:   resumeInstanceResponse.Data.Status,
 	}

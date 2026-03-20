@@ -118,6 +118,6 @@ func (ic *InstanceConfig) ToCreateInstanceConfig() *aura.CreateInstanceConfigDat
 		Memory:        ic.Memory,
 		Type:          ic.Type,
 		Version:       version,
-		TenantId:      ic.TenantId,
+		TenantID:      ic.TenantId,
 	}
 }

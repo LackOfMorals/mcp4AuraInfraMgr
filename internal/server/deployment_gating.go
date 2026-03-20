@@ -154,7 +154,7 @@ func executePreDeploymentSnapshotWithProgress(
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create snapshot for instance '%s': %v", instanceID, err)), nil
 	}
-	snapshotID := snapshotResp.Data.SnapshotId
+	snapshotID := snapshotResp.Data.SnapshotID
 
 	sendStatus(fmt.Sprintf("Snapshot '%s' created. Waiting for it to complete…", snapshotID))
 

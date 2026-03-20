@@ -174,7 +174,7 @@ func executeProvisionEnvironmentWithProgress(
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create instance '%s': %v", instanceName, err)), nil
 	}
 
-	instanceID := created.Data.Id
+	instanceID := created.Data.ID
 	// Credentials are only returned at creation time — capture them before polling.
 	username := created.Data.Username
 	password := created.Data.Password
@@ -259,7 +259,7 @@ func executeProvisionEnvironmentWithProgress(
 					instanceName, instanceID, instanceID,
 				)), nil
 
-			// All other statuses (creating, loading, updating, …) → keep waiting.
+				// All other statuses (creating, loading, updating, …) → keep waiting.
 			}
 		}
 	}
