@@ -1,0 +1,37 @@
+{
+  "configurations": [
+    {
+      "label": "dev-small",
+      "description": "Small development instance for testing",
+      "name": "dev-instance",
+      "cloud_provider": "gcp",
+      "region": "us-central1",
+      "memory": "2GB",
+      "type": "professional-db",
+      "tenant_id": "YOUR_TENANT_ID_HERE",
+      "version": "5"
+    },
+    {
+      "label": "prod-medium",
+      "description": "Medium production instance",
+      "name": "prod-instance",
+      "cloud_provider": "aws",
+      "region": "us-east-1",
+      "memory": "8GB",
+      "type": "business-critical",
+      "tenant_id": "YOUR_TENANT_ID_HERE",
+      "version": "5"
+    },
+    {
+      "label": "staging",
+      "description": "Staging environment instance",
+      "name": "staging-instance",
+      "cloud_provider": "azure",
+      "region": "eastus",
+      "memory": "4GB",
+      "type": "professional-db",
+      "tenant_id": "YOUR_TENANT_ID_HERE",
+      "version": "5"
+    }
+  ]
+}

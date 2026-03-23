@@ -12,12 +12,13 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	URI          string // The URL of the Aura API. Default https://api.neo4j.io/v1
-	ClientId     string // Client Id to obtain an token to use with Aura API
-	ClientSecret string // Client Secret to obtain an token to use with Aura API
-	ReadOnly     bool   // Disables tools that would make changes.  True by default
-	LogLevel     string // Logging level to use.  Default  Info
-	LogFormat    string //  Log format to use. Default Text
+	URI             string // The URL of the Aura API. Default https://api.neo4j.io/v1
+	ClientId        string // Client Id to obtain an token to use with Aura API
+	ClientSecret    string // Client Secret to obtain an token to use with Aura API
+	ReadOnly        bool   // Disables tools that would make changes.  True by default
+	LogLevel        string // Logging level to use.  Default  Info
+	LogFormat       string //  Log format to use. Default Text
+	InstanceCfgFile string // Full path to the config file with instance definitions
 }
 
 // Validate validates the configuration and returns an error if invalid
@@ -45,10 +46,11 @@ func (c *Config) Validate() error {
 
 // CLIOverrides holds optional configuration values from CLI flags
 type CLIOverrides struct {
-	URI       string
-	ReadOnly  string
-	LogLevel  string
-	LogFormat string
+	URI         string
+	ReadOnly    string
+	LogLevel    string
+	LogFormat   string
+	InstCfgFile string
 }
 
 // LoadConfig loads configuration from environment variables, applies CLI overrides, and validates.
@@ -64,6 +66,7 @@ func LoadConfig(cliOverrides *CLIOverrides) (*Config, error) {
 	logFormat := GetEnvWithDefault("LOG_FORMAT", "text")
 	readOnly := GetEnvWithDefault("READ_ONLY", "true")
 	uri := GetEnvWithDefault("URI", "https://api.neo4j.io/v1")
+	instCfgFile := GetEnvWithDefault("INSTANCE_CONFIG_FILE", "./instance_configs.json")
 
 	// Validate log level and use default if invalid
 	if !slices.Contains(logger.ValidLogLevels, logLevel) {
@@ -77,13 +80,20 @@ func LoadConfig(cliOverrides *CLIOverrides) (*Config, error) {
 		logFormat = "text"
 	}
 
+	// Validate instance config file is present but not the content
+	// Check if file exists
+	if _, err := os.Stat(instCfgFile); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Warning: instance configuration file not found at '%s'. ", instCfgFile)
+	}
+
 	cfg := &Config{
-		URI:          uri,
-		ReadOnly:     ParseBool(readOnly, true),
-		LogLevel:     logLevel,
-		LogFormat:    logFormat,
-		ClientId:     clientId,
-		ClientSecret: clientSecret,
+		URI:             uri,
+		ReadOnly:        ParseBool(readOnly, true),
+		LogLevel:        logLevel,
+		LogFormat:       logFormat,
+		ClientId:        clientId,
+		ClientSecret:    clientSecret,
+		InstanceCfgFile: instCfgFile,
 	}
 
 	// Validate configuration

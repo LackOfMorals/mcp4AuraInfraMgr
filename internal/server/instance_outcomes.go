@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/LackOfMorals/aura-client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -41,7 +42,7 @@ func executeListInstances(ctx context.Context, parameters map[string]interface{}
 	}
 
 	// Get the list of instances
-	instances, err := deps.AClient.Instances.List()
+	instances, err := deps.AClient.Instances.List(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list instances: %v", err)), nil
 	}
@@ -53,7 +54,7 @@ func executeListInstances(ctx context.Context, parameters map[string]interface{}
 	for _, inst := range instances.Data {
 		records = append(records, instanceSummary{
 			Name:          inst.Name,
-			Id:            inst.Id,
+			ID:            inst.ID,
 			Created:       inst.Created,
 			CloudProvider: inst.CloudProvider,
 		})
@@ -64,6 +65,181 @@ func executeListInstances(ctx context.Context, parameters map[string]interface{}
 	}
 
 	jsonData, err := json.Marshal(records)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerListInstanceConfigsOutcome registers the list-instance-configs outcome
+func (r *OutcomeRegistry) registerListInstanceConfigsOutcome() {
+	r.Outcomes["list-instance-configs"] = &Outcome{
+		ID:          "list-instance-configs",
+		Name:        "List Instance Configurations",
+		Description: "List all available pre-configured instance templates. Each configuration has a friendly label that can be used when creating instances, avoiding the need to specify all parameters manually.",
+		Type:        OutcomesTypeList,
+		ReadOnly:    true,
+		Parameters:  []OutcomeParameter{}, // No parameters needed
+		Metadata: map[string]interface{}{
+			"category": "configurations",
+		},
+		Handler: executeListInstanceConfigs,
+	}
+}
+
+// executeListInstanceConfigs implements the list-instance-configs outcome
+func executeListInstanceConfigs(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	// Load configurations from file
+	configFile, err := LoadInstanceConfigurations(deps.Config.InstanceCfgFile)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to load instance configurations: %v, use create-instance outcome to create new instances", err)), nil
+	}
+
+	// Create summary list
+	type configSummary struct {
+		Label         string `json:"label"`
+		Description   string `json:"description,omitempty"`
+		Name          string `json:"name"`
+		CloudProvider string `json:"cloud_provider"`
+		Region        string `json:"region"`
+		Memory        string `json:"memory"`
+		Type          string `json:"type"`
+		TenantId      string `json:"tenant_id"`
+		Version       string `json:"version,omitempty"`
+	}
+
+	summaries := make([]configSummary, 0, len(configFile.Configurations))
+	for _, config := range configFile.Configurations {
+		// Validate each configuration
+		if err := config.ValidateConfig(); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid configuration found: %v", err)), nil
+		}
+
+		summaries = append(summaries, configSummary{
+			Label:         config.Label,
+			Description:   config.Description,
+			Name:          config.Name,
+			CloudProvider: config.CloudProvider,
+			Region:        config.Region,
+			Memory:        config.Memory,
+			Type:          config.Type,
+			TenantId:      config.TenantId,
+		})
+	}
+
+	jsonData, err := json.MarshalIndent(summaries, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize configurations: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerCreateInstanceFromConfigOutcome registers the create-instance-from-config outcome
+func (r *OutcomeRegistry) registerCreateInstanceFromConfigOutcome() {
+	r.Outcomes["create-instance-from-config"] = &Outcome{
+		ID:          "create-instance-from-config",
+		Name:        "Create Instance from Configuration",
+		Description: "Create a new Neo4j Aura database instance using a pre-configured template. Simply specify the configuration label to create an instance with all the predefined settings. Use 'list-instance-configs' to see available configurations.",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "config_label",
+				Type:        "string",
+				Description: "The label of the pre-configured instance template to use. Use 'list-instance-configs' outcome to see available labels.",
+				Required:    true,
+			},
+			{
+				Name:        "override_name",
+				Type:        "string",
+				Description: "Optional: Override the default name from the configuration with a custom name",
+				Required:    false,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category": "instances",
+		},
+		Handler: executeCreateInstanceFromConfig,
+	}
+}
+
+// executeCreateInstanceFromConfig implements the create-instance-from-config outcome
+func executeCreateInstanceFromConfig(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	// Validate and extract required parameter
+	configLabel, ok := parameters["config_label"].(string)
+	if !ok || configLabel == "" {
+		return mcp.NewToolResultError("'config_label' parameter is required and must be a non-empty string"), nil
+	}
+
+	// Load configurations from file
+	configFile, err := LoadInstanceConfigurations(deps.Config.InstanceCfgFile)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to load instance configurations: %v, use create-instance outcome to create new instances.", err)), nil
+	}
+
+	// Get the specific configuration
+	config, err := configFile.GetConfigByLabel(configLabel)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Configuration not found: %v. Use 'list-instance-configs' to see available configurations.", err)), nil
+	}
+
+	// Validate the configuration
+	if err := config.ValidateConfig(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid configuration: %v", err)), nil
+	}
+
+	// Check for name override
+	instanceName := config.Name
+	if overrideName, ok := parameters["override_name"].(string); ok && overrideName != "" {
+		instanceName = overrideName
+	}
+
+	// Create the instance definition
+	instanceDefinition := config.ToCreateInstanceConfig()
+	instanceDefinition.Name = instanceName
+
+	// Call the Aura API to create the instance
+	instance, err := deps.AClient.Instances.Create(ctx, instanceDefinition)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create instance: %v", err)), nil
+	}
+
+	// Format the response
+	type createResult struct {
+		Success       bool   `json:"success"`
+		Message       string `json:"message"`
+		ConfigUsed    string `json:"config_used"`
+		Id            string `json:"id"`
+		Name          string `json:"name"`
+		Status        string `json:"status"`
+		CloudProvider string `json:"cloud_provider"`
+		Memory        string `json:"memory"`
+		Type          string `json:"type"`
+		URL           string `json:"url,omitempty"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+	}
+
+	result := createResult{
+		Success:       true,
+		Message:       fmt.Sprintf("Instance created successfully from configuration '%s'", configLabel),
+		ConfigUsed:    configLabel,
+		Id:            instance.Data.ID,
+		Name:          instance.Data.Name,
+		CloudProvider: instance.Data.CloudProvider,
+		Type:          instance.Data.Type,
+		URL:           instance.Data.ConnectionUrl,
+		Username:      instance.Data.Username,
+		Password:      instance.Data.Password,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
 	}
@@ -107,16 +283,16 @@ func executeGetInstanceDetails(ctx context.Context, parameters map[string]interf
 	}
 
 	// Get the instance details from Aura API
-	instanceInfo, err := deps.AClient.Instances.Get(instanceID)
+	instanceInfo, err := deps.AClient.Instances.Get(ctx, instanceID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to retrieve instance details: %v. The instance may not exist or you may not have access to it.", err)), nil
 	}
 
 	// Format the response with all relevant details
-	type instanceDetails aura.GetInstanceData
+	type instanceDetails aura.InstanceData
 
 	details := instanceDetails{
-		Id:            instanceInfo.Data.Id,
+		ID:            instanceInfo.Data.ID,
 		Name:          instanceInfo.Data.Name,
 		Status:        instanceInfo.Data.Status,
 		ConnectionUrl: instanceInfo.Data.ConnectionUrl,
@@ -125,7 +301,7 @@ func executeGetInstanceDetails(ctx context.Context, parameters map[string]interf
 		Memory:        instanceInfo.Data.Memory,
 		Storage:       instanceInfo.Data.Storage,
 		Type:          instanceInfo.Data.Type,
-		TenantId:      instanceInfo.Data.TenantId,
+		TenantID:      instanceInfo.Data.TenantID,
 		MetricsURL:    instanceInfo.Data.MetricsURL,
 	}
 
@@ -191,13 +367,13 @@ func executeDeleteInstance(ctx context.Context, parameters map[string]interface{
 	}
 
 	// Get instance details first to return information about what was deleted
-	instanceInfo, err := deps.AClient.Instances.Get(instanceID)
+	instanceInfo, err := deps.AClient.Instances.Get(ctx, instanceID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to retrieve instance details before deletion: %v. The instance may not exist or you may not have access to it.", err)), nil
 	}
 
 	// Delete the instance using the Aura API client
-	_, err = deps.AClient.Instances.Delete(instanceID)
+	_, err = deps.AClient.Instances.Delete(ctx, instanceID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete instance: %v", err)), nil
 	}
@@ -356,11 +532,11 @@ func executeCreateInstance(ctx context.Context, parameters map[string]interface{
 		Memory:        memory,
 		Type:          instanceType,
 		Version:       version,
-		TenantId:      tenant,
+		TenantID:      tenant,
 	}
 
 	// Call the Aura API to create the instance
-	instance, err := deps.AClient.Instances.Create(&instanceDefinition)
+	instance, err := deps.AClient.Instances.Create(ctx, &instanceDefinition)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create instance: %v", err)), nil
 	}
@@ -383,13 +559,295 @@ func executeCreateInstance(ctx context.Context, parameters map[string]interface{
 	result := createResult{
 		Success:       true,
 		Message:       "Instance created successfully",
-		Id:            instance.Data.Id,
+		Id:            instance.Data.ID,
 		Name:          instance.Data.Name,
 		CloudProvider: instance.Data.CloudProvider,
 		Type:          instance.Data.Type,
 		URL:           instance.Data.ConnectionUrl,
 		Username:      instance.Data.Username,
 		Password:      instance.Data.Password,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerSnapshotInstanceOutcome registers the snapshot-instance outcome
+func (r *OutcomeRegistry) registerSnapshotInstanceOutcome() {
+	r.Outcomes["snapshot-instance"] = &Outcome{
+		ID:          "snapshot-instance",
+		Name:        "Snapshot Instance",
+		Description: "",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "instance_id",
+				Type:        "string",
+				Description: "The ID of the instance to snapshot",
+				Required:    true,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category":    "instances",
+			"destructive": false,
+		},
+		Handler: executeSnapshotInstance,
+	}
+}
+
+// executeSnapshotInstance implements the snapshot-instance outcome
+func executeSnapshotInstance(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	// Validate and extract required parameters
+	instanceID, ok := parameters["instance_id"].(string)
+	if !ok || instanceID == "" {
+		return mcp.NewToolResultError("'instance_id' parameter is required and must be a non-empty string"), nil
+	}
+
+	// Take the snapshot of the instance using the Aura API client
+	snapshotResponse, err := deps.AClient.Snapshots.Create(ctx, instanceID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to take snapshot of instance: %v", err)), nil
+	}
+
+	// Get some further detail for snapshot
+	snapshotDetails, err := deps.AClient.Snapshots.Get(ctx, instanceID, snapshotResponse.Data.SnapshotID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get snapshot detail for instance: %v", err)), nil
+	}
+
+	// Format the response to send back
+	type createSnapshotResult struct {
+		Success    bool   `json:"success"`
+		Message    string `json:"message"`
+		Id         string `json:"snapshot_id"`
+		TimeDate   string `json:"timestamp"`
+		Status     string `json:"status"`
+		Exportable bool   `json:"exportable"`
+	}
+
+	result := createSnapshotResult{
+		Success:    true,
+		Message:    fmt.Sprintf("Snapshot '%s' for instance %s has been initiated", snapshotResponse.Data.SnapshotID, instanceID),
+		Id:         snapshotResponse.Data.SnapshotID,
+		TimeDate:   snapshotDetails.Data.Timestamp,
+		Status:     snapshotDetails.Data.Status,
+		Exportable: snapshotDetails.Data.Exportable,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerListSnapshotInstanceOutcome registers the snapshot-instance outcome
+func (r *OutcomeRegistry) registerListSnapshotInstanceOutcome() {
+	r.Outcomes["list-snapshot-instance"] = &Outcome{
+		ID:          "list-snapshot-instance",
+		Name:        "List Snapshots",
+		Description: "",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "instance_id",
+				Type:        "string",
+				Description: "The ID of the instance to snapshot",
+				Required:    true,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category":    "instances",
+			"destructive": false,
+		},
+		Handler: executeListSnapshotInstance,
+	}
+}
+
+// executeListSnapshotInstance implements the list-snapshot-instance outcome
+func executeListSnapshotInstance(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	type snapshotSummary aura.GetSnapshotData
+
+	type snapshotList []snapshotSummary
+
+	// Validate and extract required parameters
+	instanceID, ok := parameters["instance_id"].(string)
+	if !ok || instanceID == "" {
+		return mcp.NewToolResultError("'instance_id' parameter is required and must be a non-empty string"), nil
+	}
+
+	//  List the snapshot of the instance using the Aura API client
+	listSnapshotResponse, err := deps.AClient.Snapshots.List(ctx, instanceID, "")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get snapshot of instance: %v", err)), nil
+	}
+
+	// Create an empty list to hold our snapshots
+	records := snapshotList{}
+
+	// Fill the list with our snapshot information
+	for _, snap := range listSnapshotResponse.Data {
+		records = append(records, snapshotSummary{
+			InstanceID: snap.InstanceID,
+			SnapshotID: snap.SnapshotID,
+			Profile:    snap.Profile,
+			Status:     snap.Status,
+			Timestamp:  snap.Timestamp,
+			Exportable: snap.Exportable,
+		})
+	}
+
+	if len(records) == 0 {
+		return mcp.NewToolResultText("No snapshots found or user does not have access to any for instance " + instanceID), nil
+	}
+
+	jsonData, err := json.Marshal(records)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerPauseInstanceOutcome registers the pause-instance outcome
+func (r *OutcomeRegistry) registerPauseInstanceOutcome() {
+	r.Outcomes["pause-instance"] = &Outcome{
+		ID:          "pause-instance",
+		Name:        "Pause Instance",
+		Description: "",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "instance_id",
+				Type:        "string",
+				Description: "The ID of the instance to pause",
+				Required:    true,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category":    "instances",
+			"destructive": false,
+		},
+		Handler: executePauseInstance,
+	}
+}
+
+// executePauseInstance implements the pause-instance outcome
+func executePauseInstance(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	// Validate and extract required parameters
+	instanceID, ok := parameters["instance_id"].(string)
+	if !ok || instanceID == "" {
+		return mcp.NewToolResultError("'instance_id' parameter is required and must be a non-empty string"), nil
+	}
+
+	// Pause the instance using the Aura API client
+	pauseInstanceResponse, err := deps.AClient.Instances.Pause(ctx, instanceID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed pause instance: %v", err)), nil
+	}
+
+	// Format the response to send back
+	type pauseInstanceResult struct {
+		Success  bool   `json:"success"`
+		Message  string `json:"message"`
+		Id       string `json:"instance_id"`
+		Status   string `json:"status"`
+		TimeDate string
+	}
+
+	result := pauseInstanceResult{
+		Success:  true,
+		Message:  fmt.Sprintf("Pausing for instance %s has been initiated", instanceID),
+		Id:       pauseInstanceResponse.Data.ID,
+		TimeDate: time.Now().String(),
+		Status:   pauseInstanceResponse.Data.Status,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to serialize results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// registerResumeInstanceOutcome registers the pause-instance outcome
+func (r *OutcomeRegistry) registerResumeInstanceOutcome() {
+	r.Outcomes["resume-instance"] = &Outcome{
+		ID:          "resume-instance",
+		Name:        "Resume Instance",
+		Description: "",
+		Type:        OutcomesTypeCreate,
+		ReadOnly:    false,
+		Parameters: []OutcomeParameter{
+			{
+				Name:        "instance_id",
+				Type:        "string",
+				Description: "The ID of the instance to resume",
+				Required:    true,
+			},
+		},
+		Metadata: map[string]interface{}{
+			"category":    "instances",
+			"destructive": false,
+		},
+		Handler: executeResumeInstance,
+	}
+}
+
+// executeResumeInstance implements the pause-instance outcome
+func executeResumeInstance(ctx context.Context, parameters map[string]interface{}, deps *Dependencies) (*mcp.CallToolResult, error) {
+	if deps.AClient == nil {
+		return mcp.NewToolResultError("Aura API Client is not initialized"), nil
+	}
+
+	// Validate and extract required parameters
+	instanceID, ok := parameters["instance_id"].(string)
+	if !ok || instanceID == "" {
+		return mcp.NewToolResultError("'instance_id' parameter is required and must be a non-empty string"), nil
+	}
+
+	// Pause the instance using the Aura API client
+	resumeInstanceResponse, err := deps.AClient.Instances.Resume(ctx, instanceID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed resume instance: %v", err)), nil
+	}
+
+	// Format the response to send back
+	type resumeInstanceResult struct {
+		Success  bool   `json:"success"`
+		Message  string `json:"message"`
+		Id       string `json:"instance_id"`
+		Status   string `json:"status"`
+		TimeDate string
+	}
+
+	result := resumeInstanceResult{
+		Success:  true,
+		Message:  fmt.Sprintf("Resuming for instance %s has been initiated", instanceID),
+		Id:       resumeInstanceResponse.Data.ID,
+		TimeDate: time.Now().String(),
+		Status:   resumeInstanceResponse.Data.Status,
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
